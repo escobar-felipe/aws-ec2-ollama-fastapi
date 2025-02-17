@@ -22,7 +22,7 @@ async def proxy_request(
     """Encaminha requisições para o Ollama"""
 
     # Monta a URL do destino
-    target_url = f"{OLLAMA_URL}/{path}"
+    target_url = f"{OLLAMA_URL}/api/{path}"
 
     # Define os headers originais (REMOVIDO O `Host`)
     headers = {
