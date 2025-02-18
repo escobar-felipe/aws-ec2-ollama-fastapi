@@ -33,7 +33,7 @@ async def proxy_request(
     logger.info(f"Incoming request: {request.method} /v1/{path}")
 
     # Fix the URL redirection
-    target_url = f"{OLLAMA_URL}/api/{path}"
+    target_url = f"{OLLAMA_URL}/{path}"
     logger.info(f"Forwarding request to: {target_url}")
 
     # Capture headers (excluding 'host')
