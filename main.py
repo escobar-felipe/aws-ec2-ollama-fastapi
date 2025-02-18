@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
 import httpx
 import logging
+import asyncio
 
 # Configurations
 OLLAMA_URL = "http://0.0.0.0:11434"
@@ -27,12 +28,11 @@ async def validate_api_key(request: Request):
 async def proxy_request(
     path: str, request: Request, _: None = Depends(validate_api_key)
 ):
-    """Proxy requests to Ollama"""
+    """Proxy requests to Ollama, handling both normal and streaming responses"""
 
-    # Log incoming request details
     logger.info(f"Incoming request: {request.method} /v1/{path}")
 
-    # Fix the URL redirection
+    # Construct target URL (remove redundant '/api/')
     target_url = f"{OLLAMA_URL}/{path}"
     logger.info(f"Forwarding request to: {target_url}")
 
@@ -46,23 +46,38 @@ async def proxy_request(
         body = await request.body()
         logger.info(f"Request body: {body.decode() if body else 'No body'}")
 
-        # Forward request to Ollama
         try:
             response = await client.request(
-                method=request.method, url=target_url, headers=headers, content=body
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                content=body,
+                timeout=60.0,  # Increase timeout to handle long responses
+                stream=True,  # Enable streaming response handling
             )
-            logger.info(
-                f"Received response: {response.status_code} {response.text[:500]}"
+
+            # Handle Streaming Response
+            if response.headers.get("content-type") == "text/event-stream":
+                return Response(
+                    content=stream_response(response), media_type="text/event-stream"
+                )
+
+            # Handle Normal Response
+            return Response(
+                content=await response.aread(),
+                status_code=response.status_code,
+                headers=dict(response.headers),
             )
+
         except httpx.RequestError as e:
             logger.error(f"Request to Ollama failed: {str(e)}")
             raise HTTPException(status_code=502, detail="Ollama backend unavailable")
 
-        return Response(
-            content=response.content,
-            status_code=response.status_code,
-            headers=dict(response.headers),
-        )
+
+async def stream_response(response):
+    """Stream data from Ollama to the client"""
+    async for chunk in response.aiter_bytes():
+        yield chunk
 
 
 if __name__ == "__main__":
