@@ -47,27 +47,27 @@ async def proxy_request(
         logger.info(f"Request body: {body.decode() if body else 'No body'}")
 
         try:
-            response = await client.request(
+            async with client.stream(
                 method=request.method,
                 url=target_url,
                 headers=headers,
                 content=body,
                 timeout=60.0,  # Increase timeout to handle long responses
-                stream=True,  # Enable streaming response handling
-            )
+            ) as response:
 
-            # Handle Streaming Response
-            if response.headers.get("content-type") == "text/event-stream":
+                # Handle Streaming Response
+                if response.headers.get("content-type") == "text/event-stream":
+                    return Response(
+                        content=stream_response(response),
+                        media_type="text/event-stream",
+                    )
+
+                # Handle Normal Response
                 return Response(
-                    content=stream_response(response), media_type="text/event-stream"
+                    content=await response.aread(),
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
                 )
-
-            # Handle Normal Response
-            return Response(
-                content=await response.aread(),
-                status_code=response.status_code,
-                headers=dict(response.headers),
-            )
 
         except httpx.RequestError as e:
             logger.error(f"Request to Ollama failed: {str(e)}")
